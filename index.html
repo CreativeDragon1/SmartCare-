@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SmartCare+ — Integrated AI Healthcare</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <div class="loader" id="loader">
+    <div class="pulse"></div>
+  </div>
+
+  <nav class="navbar">
+    <div class="nav-container">
+      <div class="brand-logo" onclick="switchView('hero')">
+        <div class="logo-icon">+</div>
+        <span class="brand-text">SmartCare+</span>
+      </div>
+      <div class="nav-menu" id="navMenu">
+        <a href="javascript:void(0)" class="nav-link active" data-view="hero">Home</a>
+        <a href="javascript:void(0)" class="nav-link" data-view="checker">Symptom Checker</a>
+        <a href="javascript:void(0)" class="nav-link" data-view="doctors">Doctors</a>
+        <a href="javascript:void(0)" class="nav-link" data-view="pharmacy">Pharmacy</a>
+        <a href="javascript:void(0)" class="nav-link" data-view="community">Community</a>
+      </div>
+      <div class="nav-right">
+        <div class="auth-section" id="authSection">
+          <button class="btn btn-secondary" id="loginBtn">Login</button>
+        </div>
+        <button class="mobile-toggle" id="mobileToggle">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="auth-modal hidden" id="authModal">
+    <div class="auth-modal-content">
+      <button class="auth-close" id="authClose">×</button>
+      <div class="auth-tabs">
+        <button class="auth-tab active" data-tab="login">Patient Login</button>
+        <button class="auth-tab" data-tab="signup">Sign Up</button>
+        <button class="auth-tab" data-tab="doctor">Doctor Login</button>
+      </div>
+      
+      <div id="loginForm" class="auth-form active">
+        <h2>Welcome Back</h2>
+        <div class="input-group">
+          <label>Email</label>
+          <input type="email" id="loginEmail" placeholder="your@email.com" />
+        </div>
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" id="loginPassword" placeholder="••••••••" />
+        </div>
+        <button class="btn btn-primary" id="loginSubmit">Login</button>
+      </div>
+      
+      <div id="signupForm" class="auth-form">
+        <h2>Create Account</h2>
+        <div class="input-group">
+          <label>Full Name</label>
+          <input type="text" id="signupName" placeholder="John Doe" />
+        </div>
+        <div class="input-group">
+          <label>Email</label>
+          <input type="email" id="signupEmail" placeholder="your@email.com" />
+        </div>
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" id="signupPassword" placeholder="••••••••" />
+        </div>
+        <button class="btn btn-primary" id="signupSubmit">Sign Up</button>
+      </div>
+
+      <div id="doctorForm" class="auth-form">
+        <h2>Doctor Portal</h2>
+        <div class="input-group">
+          <label>Email</label>
+          <input type="email" id="doctorEmail" placeholder="doctor@hospital.com" />
+        </div>
+        <div class="input-group">
+          <label>Password</label>
+          <input type="password" id="doctorPassword" placeholder="••••••••" />
+        </div>
+        <button class="btn btn-primary" id="doctorLoginSubmit">Login as Doctor</button>
+        <p style="margin-top: 12px; font-size: 14px; color: var(--gray);">
+          Demo: doctor@smartcare.com / doctor123
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <main class="main-content">
+    <section id="hero" class="view hero-section active">
+      <div class="hero-background"></div>
+      <div class="hero-content">
+        <h1 class="hero-title fade-in">Your Health, <span class="gradient-text">Simplified</span></h1>
+        <p class="hero-subtitle fade-in-delay">Integrated AI healthcare ecosystem — understand symptoms, consult doctors, access medication, and join a supportive community.</p>
+        <div class="hero-buttons fade-in-delay-2">
+          <button class="btn btn-primary pulse-btn" data-nav="checker">Check Symptoms</button>
+          <button class="btn btn-secondary" data-nav="doctors">Find Doctors</button>
+        </div>
+        <div class="hero-features">
+          <div class="feature-card">
+            <div class="feature-icon">🔍</div>
+            <h3>AI Symptom Analysis</h3>
+            <p>Intelligent predictions with confidence scores</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">👨‍⚕️</div>
+            <h3>Expert Consultations</h3>
+            <p>Book verified doctors instantly</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💊</div>
+            <h3>Smart Pharmacy</h3>
+            <p>Verified medications delivered</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">💬</div>
+            <h3>Wellness Community</h3>
+            <p>Connect with health experts</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="checker" class="view section-content">
+      <div class="section-header">
+        <h2 class="section-title">AI Symptom Checker</h2>
+        <p class="section-subtitle">Describe your symptoms and get instant AI-powered insights</p>
+      </div>
+      <div class="checker-container">
+        <div class="input-card">
+          <div class="input-group">
+            <label for="symptoms">Describe Your Symptoms</label>
+            <textarea id="symptoms" placeholder="e.g., I have a persistent cough, sore throat, and mild fever..." rows="5"></textarea>
+          </div>
+          <div class="input-row">
+            <div class="input-group flex-1">
+              <label for="patientId">Patient ID <span class="optional">(optional)</span></label>
+              <input id="patientId" placeholder="e.g., P12345" />
+            </div>
+            <button id="checkBtn" class="btn btn-primary btn-lg">
+              <span class="btn-text">Analyze Symptoms</span>
+              <span class="btn-icon">→</span>
+            </button>
+          </div>
+        </div>
+        <div id="result" class="result-container"></div>
+      </div>
+    </section>
+
+    <section id="doctors" class="view section-content hidden">
+      <div class="section-header">
+        <h2 class="section-title">Consult Expert Doctors</h2>
+        <p class="section-subtitle">Book appointments with verified healthcare professionals</p>
+      </div>
+      <div class="doctors-grid" id="doctorsList"></div>
+    </section>
+
+    <section id="pharmacy" class="view section-content hidden">
+      <div class="section-header">
+        <h2 class="section-title">Smart Pharmacy</h2>
+        <p class="section-subtitle">Browse verified medications and wellness products</p>
+      </div>
+      <div class="pharmacy-container">
+        <div class="products-grid" id="pharmacyList"></div>
+        <div class="cart-sidebar">
+          <h3>Your Cart</h3>
+          <div id="cart" class="cart-items"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="community" class="view section-content hidden">
+      <div class="section-header">
+        <h2 class="section-title">Wellness Community</h2>
+        <p class="section-subtitle">Join discussions and connect with health experts</p>
+      </div>
+      <div class="community-search">
+        <input type="text" id="communitySearch" placeholder="🔍 Search communities..." oninput="searchCommunities()">
+        <button class="btn btn-primary" onclick="showRequestCommunity()">+ Request Community</button>
+      </div>
+      <div class="community-grid" id="topics"></div>
+    </section>
+
+    <section id="profile" class="view section-content hidden">
+      <div class="profile-container">
+        <div class="profile-header">
+          <div class="profile-photo-section">
+            <div class="profile-photo" id="profilePhoto">
+              <div class="profile-avatar" id="profileAvatar">👤</div>
+              <input type="file" id="photoUpload" accept="image/*" style="display: none;">
+            </div>
+            <button class="btn btn-secondary" onclick="document.getElementById('photoUpload').click()">Change Photo</button>
+          </div>
+          <div class="profile-info">
+            <h2 id="profileName">Guest User</h2>
+            <div class="profile-details">
+              <div class="detail-item">
+                <span class="detail-label">Patient ID:</span>
+                <span class="detail-value" id="profilePatientId">N/A</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Email:</span>
+                <span class="detail-value" id="profileEmail">Not logged in</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Member Since:</span>
+                <span class="detail-value" id="profileJoinDate">N/A</span>
+              </div>
+            </div>
+            <button class="btn btn-secondary logout-btn" id="profileLogoutBtn" style="display: none;">Logout</button>
+          </div>
+        </div>
+
+        <div class="profile-tabs">
+          <button class="profile-tab active" data-tab="history">Health History</button>
+          <button class="profile-tab" data-tab="communities">My Communities</button>
+          <button class="profile-tab" data-tab="appointments">Appointments</button>
+          <button class="profile-tab" data-tab="settings">Settings</button>
+        </div>
+
+        <div class="profile-content">
+          <div class="profile-tab-content active" id="historyTab">
+            <div class="timeline" id="profileTimeline">
+              <div class="empty-state">
+                <p>No health history yet. Start by checking symptoms or booking appointments!</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-tab-content" id="communitiesTab">
+            <div id="userCommunities">
+              <div class="empty-state">
+                <p>You haven't joined any communities yet. Visit the Community page to join!</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-tab-content" id="appointmentsTab">
+            <div id="userAppointments">
+              <div class="empty-state">
+                <p>No appointments booked yet.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-tab-content" id="settingsTab">
+            <div class="settings-section">
+              <h3>Privacy Settings</h3>
+              <div class="setting-item">
+                <label>
+                  <input type="checkbox" id="shareHistory" checked>
+                  <span>Allow doctors to view my health history</span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <label>
+                  <input type="checkbox" id="communityNotifications" checked>
+                  <span>Receive community post notifications</span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <label>
+                  <input type="checkbox" id="appointmentReminders" checked>
+                  <span>Send appointment reminders</span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-section">
+              <h3>Account Actions</h3>
+              <button class="btn btn-secondary" onclick="exportHealthData()">Export Health Data</button>
+              <button class="btn btn-danger" onclick="deleteAccount()" style="background: #dc3545; margin-left: 10px;">Delete Account</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="doctorDashboard" class="view section-content hidden">
+      <div class="profile-container">
+        <div class="profile-header">
+          <div class="profile-info" style="flex: 1;">
+            <h2 id="doctorName">Dr. John Smith</h2>
+            <div class="profile-details">
+              <div class="detail-item">
+                <span class="detail-label">Specialty:</span>
+                <span class="detail-value" id="doctorSpecialty">General Physician</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Email:</span>
+                <span class="detail-value" id="doctorEmailDisplay">doctor@hospital.com</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">License:</span>
+                <span class="detail-value" id="doctorLicense">MD-12345</span>
+              </div>
+            </div>
+            <button class="btn btn-secondary logout-btn" id="doctorLogoutBtn">Logout</button>
+          </div>
+        </div>
+
+        <div class="profile-tabs">
+          <button class="profile-tab active" data-tab="doctorAppointments">My Appointments</button>
+          <button class="profile-tab" data-tab="doctorPatients">Patients</button>
+          <button class="profile-tab" data-tab="doctorMeetings">Virtual Meetings</button>
+        </div>
+
+        <div class="profile-content">
+          <div class="profile-tab-content active" id="doctorAppointmentsTab">
+            <div id="doctorAppointmentsList">
+              <div class="empty-state">
+                <p>No appointments scheduled yet.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-tab-content" id="doctorPatientsTab">
+            <div id="doctorPatientsList">
+              <div class="empty-state">
+                <p>No patient records yet.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="profile-tab-content" id="doctorMeetingsTab">
+            <div class="meeting-controls">
+              <h3>Start Virtual Consultation</h3>
+              <p style="margin-bottom: 20px; color: var(--gray);">Create a meeting room for your patients</p>
+              <button class="btn btn-primary" onclick="createMeeting()">Create Meeting Room</button>
+            </div>
+            <div id="activeMeetings" style="margin-top: 30px;">
+              <h3>Active Meetings</h3>
+              <div id="meetingsList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="notification-container" id="notifications"></div>
+
+  <div id="requestCommunityModal" class="auth-modal hidden">
+    <div class="modal-overlay" onclick="closeRequestCommunity()"></div>
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>Request New Community</h2>
+        <button class="modal-close" onclick="closeRequestCommunity()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Community Name</label>
+          <input type="text" id="requestCommunityName" placeholder="e.g., Migraine Support">
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="requestCommunityDesc" rows="3" placeholder="Why should we add this community?"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Choose an Icon</label>
+          <div class="icon-picker">
+            <button class="icon-option" onclick="selectIcon('🏥')">🏥</button>
+            <button class="icon-option" onclick="selectIcon('💊')">💊</button>
+            <button class="icon-option" onclick="selectIcon('🩺')">🩺</button>
+            <button class="icon-option" onclick="selectIcon('🧬')">🧬</button>
+            <button class="icon-option" onclick="selectIcon('🫀')">🫀</button>
+            <button class="icon-option" onclick="selectIcon('🦴')">🦴</button>
+            <button class="icon-option" onclick="selectIcon('👁️')">👁️</button>
+            <button class="icon-option" onclick="selectIcon('🦷')">🦷</button>
+          </div>
+          <input type="hidden" id="selectedIcon" value="🏥">
+        </div>
+        <button class="btn btn-primary" onclick="submitCommunityRequest()" style="width: 100%;">Submit Request</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="firebase-config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
