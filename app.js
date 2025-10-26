@@ -93,8 +93,60 @@ document.getElementById('loginSubmit').addEventListener('click', async () => {
     const userCredential = await auth.signInWithEmailAndPassword(email, password)
     const user = userCredential.user
     
+    // FIRST: Check if this is a doctor account
+    let doctorDoc = await db.collection('doctors').where('email', '==', email).get()
+    
+    if (!doctorDoc.empty) {
+      // This is a doctor! Load doctor profile
+      const docData = doctorDoc.docs[0].data()
+      const docId = doctorDoc.docs[0].id
+      
+      currentDoctor = {
+        id: docId,
+        email: docData.email,
+        name: docData.name,
+        specialty: docData.specialty,
+        license: docData.license
+      }
+      
+      updateDoctorUI()
+      document.getElementById('authModal').classList.add('hidden')
+      showNotification(`Welcome Dr. ${docData.name.split(' ').pop()}!`, 'success')
+      switchView('doctorDashboard')
+      renderDoctorAppointments()
+      return
+    }
+    
+    // SECOND: Check if user has isDoctor flag
     const userDoc = await db.collection('users').doc(user.uid).get()
     const userData = userDoc.data()
+    
+    if (userData?.isDoctor === true) {
+      // Has isDoctor flag, try to load doctor profile
+      doctorDoc = await db.collection('doctors').where('email', '==', email).get()
+      
+      if (!doctorDoc.empty) {
+        const docData = doctorDoc.docs[0].data()
+        const docId = doctorDoc.docs[0].id
+        
+        currentDoctor = {
+          id: docId,
+          email: docData.email,
+          name: docData.name,
+          specialty: docData.specialty,
+          license: docData.license
+        }
+        
+        updateDoctorUI()
+        document.getElementById('authModal').classList.add('hidden')
+        showNotification(`Welcome Dr. ${docData.name.split(' ').pop()}!`, 'success')
+        switchView('doctorDashboard')
+        renderDoctorAppointments()
+        return
+      }
+    }
+    
+    // THIRD: Regular patient login
     currentUser = {
       email: user.email,
       uid: user.uid,
@@ -321,95 +373,6 @@ window.addEventListener('load', () => {
   const profileLogoutBtn = document.getElementById('profileLogoutBtn')
   if (profileLogoutBtn) {
     profileLogoutBtn.addEventListener('click', logout)
-  }
-  
-  // Doctor login event listener
-  const doctorLoginSubmit = document.getElementById('doctorLoginSubmit')
-  if (doctorLoginSubmit) {
-    doctorLoginSubmit.addEventListener('click', async () => {
-      const email = document.getElementById('doctorEmail').value.trim()
-      const password = document.getElementById('doctorPassword').value.trim()
-      
-      if (!email || !password) {
-        showNotification('Please fill in all fields', 'error')
-        return
-      }
-      
-      try {
-        if (email === 'doctor@smartcare.com' && password === 'doctor123') {
-          try {
-            await auth.signInWithEmailAndPassword(email, password)
-          } catch (authError) {
-            if (authError.code === 'auth/user-not-found') {
-              await auth.createUserWithEmailAndPassword(email, password)
-              showNotification('Demo doctor account created!', 'info')
-            } else {
-              throw authError
-            }
-          }
-          
-          let doctorDoc = await db.collection('doctors').where('email', '==', email).get()
-          
-          if (doctorDoc.empty) {
-            const tempId = 'demo-doctor-' + Date.now()
-            await db.collection('doctors').doc(tempId).set({
-              name: 'Dr. John Smith',
-              email: 'doctor@smartcare.com',
-              specialty: 'General Physician',
-              license: 'MD-12345',
-              createdAt: new Date().toISOString()
-            })
-            doctorDoc = await db.collection('doctors').where('email', '==', email).get()
-          }
-          
-          const docData = doctorDoc.docs[0].data()
-          const docId = doctorDoc.docs[0].id
-          
-          currentDoctor = {
-            id: docId,
-            email: docData.email,
-            name: docData.name,
-            specialty: docData.specialty,
-            license: docData.license
-          }
-          
-          updateDoctorUI()
-          document.getElementById('authModal').classList.add('hidden')
-          showNotification(`Welcome Dr. ${docData.name.split(' ').pop()}!`, 'success')
-          switchView('doctorDashboard')
-          renderDoctorAppointments()
-        } else {
-          await auth.signInWithEmailAndPassword(email, password)
-          
-          let doctorDoc = await db.collection('doctors').where('email', '==', email).get()
-          
-          if (doctorDoc.empty) {
-            showNotification('Doctor account not found', 'error')
-            await auth.signOut()
-            return
-          }
-          
-          const docData = doctorDoc.docs[0].data()
-          const docId = doctorDoc.docs[0].id
-          
-          currentDoctor = {
-            id: docId,
-            email: docData.email,
-            name: docData.name,
-            specialty: docData.specialty,
-            license: docData.license
-          }
-          
-          updateDoctorUI()
-          document.getElementById('authModal').classList.add('hidden')
-          showNotification(`Welcome Dr. ${docData.name.split(' ').pop()}!`, 'success')
-          switchView('doctorDashboard')
-          renderDoctorAppointments()
-        }
-      } catch (error) {
-        showNotification(error.message, 'error')
-      }
-    })
   }
 })
 
