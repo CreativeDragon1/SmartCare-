@@ -287,19 +287,43 @@ async function saveUserData() {
 
 auth.onAuthStateChanged(async (user) => {
   if (user) {
-    const userDoc = await db.collection('users').doc(user.uid).get()
-    const userData = userDoc.data()
-    currentUser = {
-      email: user.email,
-      uid: user.uid,
-      name: userData?.name || user.email.split('@')[0],
-      patientId: userData?.patientId || 'N/A'
+    try {
+      // Auto-detect doctor by email
+      const doctorDoc = await db.collection('doctors').where('email', '==', user.email).get()
+      if (!doctorDoc.empty) {
+        const docData = doctorDoc.docs[0].data()
+        const docId = doctorDoc.docs[0].id
+        currentDoctor = {
+          id: docId,
+          email: docData.email,
+          name: docData.name,
+          specialty: docData.specialty,
+          license: docData.license
+        }
+        updateDoctorUI()
+        switchView('doctorDashboard')
+        renderDoctorAppointments()
+      } else {
+        // Fall back to patient
+        const userDoc = await db.collection('users').doc(user.uid).get()
+        const userData = userDoc.data()
+        currentUser = {
+          email: user.email,
+          uid: user.uid,
+          name: userData?.name || user.email.split('@')[0],
+          patientId: userData?.patientId || 'N/A'
+        }
+        updateAuthUI()
+        await loadCommunities()
+        loadUserData()
+      }
+    } catch (e) {
+      console.error('Auth state handling error:', e)
+      updateAuthUI()
     }
-    updateAuthUI()
-    await loadCommunities()
-    loadUserData()
   } else {
     currentUser = null
+    currentDoctor = null
     joinedCommunities = []
     updateAuthUI()
   }
@@ -373,6 +397,16 @@ window.addEventListener('load', () => {
   const profileLogoutBtn = document.getElementById('profileLogoutBtn')
   if (profileLogoutBtn) {
     profileLogoutBtn.addEventListener('click', logout)
+  }
+  // Meeting modal close and deep link open
+  const meetingClose = document.getElementById('meetingClose')
+  if (meetingClose) {
+    meetingClose.addEventListener('click', () => closeMeetingModal())
+  }
+  // Open meeting if deep-linked
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('meeting')) {
+    openMeetingById(params.get('meeting'))
   }
 })
 
@@ -1309,7 +1343,7 @@ async function renderUserAppointments() {
     
     const aptList = []
     appointments.forEach(doc => {
-      aptList.push(doc.data())
+      aptList.push({ id: doc.id, ...doc.data() })
     })
     
     aptList.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -1325,6 +1359,7 @@ async function renderUserAppointments() {
           <div class="timeline-details">${apt.slot}</div>
           <div class="timeline-time">${new Date(apt.createdAt).toLocaleDateString()}</div>
           <span style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: ${apt.status === 'confirmed' ? '#28a745' : '#ffc107'}; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">${apt.status}</span>
+          ${apt.status === 'confirmed' ? `<div style=\"margin-top:10px\"><button class=\"btn btn-secondary\" style=\"padding:6px 10px; font-size:12px\" onclick=\"cancelUserAppointment('${apt.id}')\">Cancel</button></div>` : ''}
         </div>
       `
       container.appendChild(card)
@@ -1538,9 +1573,11 @@ async function renderDoctorAppointments() {
             <div>🆔 Patient ID: ${apt.patientId}</div>
           </div>
           <div class="timeline-time">${new Date(apt.createdAt).toLocaleDateString()}</div>
-          <div style="margin-top: 12px; display: flex; gap: 10px;">
+          <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-primary" onclick="startMeetingForAppointment('${apt.id}', '${apt.patientName}', '${apt.patientEmail}')">Start Meeting</button>
             <button class="btn btn-secondary" onclick="viewPatientHistory('${apt.patientEmail}')">View History</button>
+            <button class="btn btn-danger" style="background:#dc3545" onclick="cancelDoctorAppointment('${apt.id}')">Cancel</button>
+            ${apt.meetingId ? `<button class="btn btn-secondary" onclick="deleteMeeting('${apt.meetingId}','${apt.id}')">End Meeting</button>` : ''}
           </div>
         </div>
       `
@@ -1596,7 +1633,7 @@ async function viewPatientHistory(patientEmail) {
 
 function createMeeting() {
   const meetingId = 'meet-' + Math.random().toString(36).substr(2, 9)
-  const meetingLink = `https://creativedragon1.github.io/SmartCare-/?meeting=${meetingId}`
+  const meetingLink = `${location.origin}${location.pathname}?meeting=${meetingId}`
   
   const meeting = {
     id: meetingId,
@@ -1616,7 +1653,7 @@ function createMeeting() {
 
 async function startMeetingForAppointment(appointmentId, patientName, patientEmail) {
   const meetingId = 'meet-' + Math.random().toString(36).substr(2, 9)
-  const meetingLink = `https://creativedragon1.github.io/SmartCare-/?meeting=${meetingId}`
+  const meetingLink = `${location.origin}${location.pathname}?meeting=${meetingId}`
   
   const meeting = {
     id: meetingId,
@@ -1641,10 +1678,9 @@ async function startMeetingForAppointment(appointmentId, patientName, patientEma
     activeMeetings.push(meeting)
     renderMeetings()
     
-    const confirmOpen = confirm(`Meeting created for ${patientName}!\n\nMeeting Link: ${meetingLink}\n\nClick OK to copy link to clipboard.`)
+    const confirmOpen = confirm(`Meeting created for ${patientName}!\n\nMeeting Link: ${meetingLink}\n\nClick OK to open the meeting.`)
     if (confirmOpen) {
-      navigator.clipboard.writeText(meetingLink)
-      showNotification('Meeting link copied to clipboard!', 'success')
+      openMeetingById(meetingId)
     }
     
     showNotification('Meeting started! Share link with patient.', 'success')
@@ -1672,16 +1708,74 @@ function renderMeetings() {
       <div class="timeline-content">
         <div class="timeline-title">${meeting.patient || 'General Consultation'}</div>
         <div class="timeline-details">
-          <div>🔗 <a href="${meeting.link}" target="_blank" style="color: var(--primary);">${meeting.link}</a></div>
+          <div>🔗 <a href="${meeting.link}" target="_self" style="color: var(--primary);">${meeting.link}</a></div>
           <div style="margin-top: 8px;">
             <button class="btn btn-secondary" onclick="navigator.clipboard.writeText('${meeting.link}'); showNotification('Link copied!', 'success')" style="font-size: 12px; padding: 6px 12px;">Copy Link</button>
-            <button class="btn btn-primary" onclick="window.open('${meeting.link}', '_blank')" style="font-size: 12px; padding: 6px 12px; margin-left: 8px;">Join</button>
+            <button class="btn btn-primary" onclick="openMeetingById('${meeting.id}')" style="font-size: 12px; padding: 6px 12px; margin-left: 8px;">Join</button>
+            <button class="btn btn-danger" onclick="deleteMeeting('${meeting.id}','${meeting.appointmentId || ''}')" style="font-size: 12px; padding: 6px 12px; margin-left: 8px; background: #dc3545;">End</button>
           </div>
         </div>
       </div>
     `
     container.appendChild(card)
   })
+}
+
+// Open meeting modal with Jitsi embed
+function openMeetingById(meetingId) {
+  const frame = document.getElementById('meetingFrame')
+  if (!frame) return
+  const room = `SmartCare-${meetingId}`
+  frame.src = `https://meet.jit.si/${room}`
+  document.getElementById('meetingModal').classList.remove('hidden')
+}
+
+function closeMeetingModal() {
+  const frame = document.getElementById('meetingFrame')
+  if (frame) frame.src = ''
+  document.getElementById('meetingModal').classList.add('hidden')
+}
+
+async function deleteMeeting(meetingId, appointmentId) {
+  try {
+    await db.collection('meetings').doc(meetingId).delete()
+    if (appointmentId) {
+      await db.collection('appointments').doc(appointmentId).update({
+        meetingLink: firebase.firestore.FieldValue.delete(),
+        meetingId: firebase.firestore.FieldValue.delete(),
+        meetingStatus: 'ended'
+      })
+    }
+    activeMeetings = activeMeetings.filter(m => m.id !== meetingId)
+    renderMeetings()
+    showNotification('Meeting ended.', 'success')
+  } catch (e) {
+    showNotification('Failed to end meeting: ' + e.message, 'error')
+  }
+}
+
+// Cancel appointment as patient
+async function cancelUserAppointment(appointmentId) {
+  try {
+    await db.collection('appointments').doc(appointmentId).update({ status: 'cancelled' })
+    showNotification('Appointment cancelled', 'success')
+    renderUserAppointments()
+    renderDoctors()
+  } catch (e) {
+    showNotification('Failed to cancel: ' + e.message, 'error')
+  }
+}
+
+// Cancel appointment as doctor
+async function cancelDoctorAppointment(appointmentId) {
+  try {
+    await db.collection('appointments').doc(appointmentId).update({ status: 'cancelled' })
+    showNotification('Appointment cancelled', 'success')
+    renderDoctorAppointments()
+    renderDoctors()
+  } catch (e) {
+    showNotification('Failed to cancel: ' + e.message, 'error')
+  }
 }
 
 document.querySelectorAll('[data-tab]').forEach(tab => {
