@@ -1359,7 +1359,10 @@ async function renderUserAppointments() {
           <div class="timeline-details">${apt.slot}</div>
           <div class="timeline-time">${new Date(apt.createdAt).toLocaleDateString()}</div>
           <span style="display: inline-block; margin-top: 8px; padding: 4px 12px; background: ${apt.status === 'confirmed' ? '#28a745' : '#ffc107'}; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">${apt.status}</span>
-          ${apt.status === 'confirmed' ? `<div style=\"margin-top:10px\"><button class=\"btn btn-secondary\" style=\"padding:6px 10px; font-size:12px\" onclick=\"cancelUserAppointment('${apt.id}')\">Cancel</button></div>` : ''}
+          ${apt.status === 'confirmed' ? `<div style="margin-top:10px; display: flex; gap: 8px;">
+            <button class="btn btn-secondary" style="padding:6px 10px; font-size:12px" onclick="cancelUserAppointment('${apt.id}')">Cancel</button>
+            ${apt.meetingLink ? `<button class="btn btn-primary" style="padding:6px 10px; font-size:12px" onclick="openMeetingById('${apt.meetingId}')">Join Meeting</button>` : ''}
+          </div>` : ''}
         </div>
       `
       container.appendChild(card)
@@ -1543,6 +1546,7 @@ async function renderDoctorAppointments() {
     // Get appointments for THIS doctor's ID (not specialty)
     const appointments = await db.collection('appointments')
       .where('doctorId', '==', currentDoctor.id)
+      .where('status', '==', 'confirmed')
       .get()
     
     if (appointments.empty) {
