@@ -1575,7 +1575,8 @@ async function renderDoctorAppointments() {
           <div class="timeline-time">${new Date(apt.createdAt).toLocaleDateString()}</div>
           <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
             <button class="btn btn-primary" onclick="startMeetingForAppointment('${apt.id}', '${apt.patientName}', '${apt.patientEmail}')">Start Meeting</button>
-            <button class="btn btn-secondary" onclick="viewPatientHistory('${apt.patientEmail}')">View History</button>
+            <button class="btn btn-secondary" onclick="viewPatientHistory('${apt.patientId}', '${apt.patientEmail}')">View History</button>
+            <button class="btn btn-secondary" onclick="addPatientHistory('${apt.patientId}')">Add History</button>
             <button class="btn btn-danger" style="background:#dc3545" onclick="cancelDoctorAppointment('${apt.id}')">Cancel</button>
             ${apt.meetingId ? `<button class="btn btn-secondary" onclick="deleteMeeting('${apt.meetingId}','${apt.id}')">End Meeting</button>` : ''}
           </div>
@@ -1589,9 +1590,14 @@ async function renderDoctorAppointments() {
   }
 }
 
-async function viewPatientHistory(patientEmail) {
+async function viewPatientHistory(patientId, patientEmail) {
   try {
-    const userDoc = await db.collection('healthHistory').doc(patientEmail).get()
+    let docRef = db.collection('healthHistory').doc(patientId)
+    let userDoc = await docRef.get()
+    // Fallback to email-keyed docs for legacy data
+    if (!userDoc.exists && patientEmail) {
+      userDoc = await db.collection('healthHistory').doc(patientEmail).get()
+    }
     
     if (!userDoc.exists) {
       showNotification('No health history found for this patient', 'info')
@@ -1600,9 +1606,16 @@ async function viewPatientHistory(patientEmail) {
     
     const history = userDoc.data().events || []
     
-    let historyHTML = `<h3>Patient History: ${patientEmail}</h3><div class="timeline">`
+    let historyHTML = `<div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <h3 style="margin:0;">Patient History</h3>
+        <div>
+          <button class="btn btn-secondary" onclick="addPatientHistory('${patientId}')">+ Add History</button>
+        </div>
+      </div>
+      <div style="color: var(--gray); margin: 6px 0 14px;">${patientEmail ? `Email: ${patientEmail} • ` : ''}ID: ${patientId}</div>
+      <div class="timeline">`
     
-    history.slice(0, 10).forEach(event => {
+    history.slice().reverse().forEach(event => {
       let icon = '📋'
       let title = 'Activity'
       
@@ -1610,13 +1623,15 @@ async function viewPatientHistory(patientEmail) {
       else if (event.action === 'book-appointment') icon = '👨‍⚕️'
       else if (event.action === 'pharmacy') icon = '💊'
       else if (event.action === 'checkout') icon = '🛒'
+      else if (event.action === 'doctor-note') icon = '🩺'
       
       historyHTML += `
         <div class="timeline-item">
           <div class="timeline-icon">${icon}</div>
           <div class="timeline-content">
-            <div class="timeline-title">${event.action}</div>
+            <div class="timeline-title">${(event.payload && event.payload.title) ? event.payload.title : event.action}</div>
             <div class="timeline-time">${new Date(event.time).toLocaleString()}</div>
+            ${event.payload && event.payload.notes ? `<div class=\"timeline-details\">${event.payload.notes}</div>` : ''}
           </div>
         </div>
       `
@@ -1628,6 +1643,50 @@ async function viewPatientHistory(patientEmail) {
     document.querySelector('[data-tab="doctorPatients"]').click()
   } catch (error) {
     showNotification('Error loading patient history: ' + error.message, 'error')
+  }
+}
+
+// Doctor adds a history entry for a patient (by patient UID)
+async function addPatientHistory(patientId) {
+  if (!currentDoctor) {
+    showNotification('Only doctors can add patient history', 'error')
+    return
+  }
+  try {
+    const title = prompt('Add history title (e.g., Diagnosis, Prescription, Follow-up):')
+    if (!title) {
+      showNotification('Cancelled: no title provided', 'info')
+      return
+    }
+    const notes = prompt('Enter details/notes:')
+    if (!notes) {
+      showNotification('Cancelled: no details provided', 'info')
+      return
+    }
+    const event = {
+      action: 'doctor-note',
+      time: new Date().toISOString(),
+      payload: {
+        title,
+        notes,
+        doctorId: currentDoctor.id,
+        doctorName: currentDoctor.name
+      }
+    }
+    const ref = db.collection('healthHistory').doc(patientId)
+    const docSnap = await ref.get()
+    if (docSnap.exists) {
+      const events = docSnap.data().events || []
+      events.push(event)
+      await ref.set({ events, updatedAt: new Date().toISOString() })
+    } else {
+      await ref.set({ events: [event], updatedAt: new Date().toISOString() })
+    }
+    showNotification('History added for patient', 'success')
+    // Refresh the patient history view if open
+    viewPatientHistory(patientId)
+  } catch (e) {
+    showNotification('Failed to add history: ' + e.message, 'error')
   }
 }
 
