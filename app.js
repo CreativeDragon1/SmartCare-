@@ -643,38 +643,65 @@ async function renderDoctors() {
     console.error('Error loading booked slots:', error)
   }
   
-  mockDoctors.forEach(doc => {
-    const card = document.createElement('div')
-    card.className = 'doctor-card'
+  // Load real doctors from Firestore
+  try {
+    const doctorsSnapshot = await db.collection('doctors').get()
     
-    const availableSlots = doc.slots.filter(slot => {
-      return !bookedSlots[doc.id] || !bookedSlots[doc.id].includes(slot)
+    if (doctorsSnapshot.empty) {
+      container.innerHTML = '<div class="empty-state"><p>No doctors available at the moment.</p></div>'
+      return
+    }
+    
+    doctorsSnapshot.forEach(doc => {
+      const doctor = doc.data()
+      const doctorId = doc.id
+      
+      const card = document.createElement('div')
+      card.className = 'doctor-card'
+      
+      // Generate default slots for each doctor
+      const defaultSlots = [
+        'Nov 1, 9:00 AM',
+        'Nov 1, 10:00 AM',
+        'Nov 1, 2:00 PM',
+        'Nov 2, 11:00 AM',
+        'Nov 2, 3:00 PM'
+      ]
+      
+      const availableSlots = defaultSlots.filter(slot => {
+        return !bookedSlots[doctorId] || !bookedSlots[doctorId].includes(slot)
+      })
+      
+      const slotsHTML = availableSlots.length > 0 
+        ? availableSlots.map(slot => `<span class="slot" onclick="selectSlot('${doctorId}', '${slot}')">${slot}</span>`).join('')
+        : '<span style="color: var(--gray); font-size: 14px;">No slots available</span>'
+      
+      const initials = doctor.name.split(' ').map(n => n[0]).join('').toUpperCase()
+      
+      card.innerHTML = `
+        <div class="doctor-header">
+          <div class="doctor-avatar">${initials}</div>
+          <div class="doctor-info">
+            <h3>${doctor.name}</h3>
+            <div class="doctor-specialty">${doctor.specialty}</div>
+            <div class="doctor-rating">★ 4.8</div>
+          </div>
+        </div>
+        <div class="doctor-slots">
+          <span class="slot-label">Select a Time Slot</span>
+          <div class="slots" id="slots-${doctorId}">
+            ${slotsHTML}
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="bookDoctor('${doctorId}', '${doctor.name}', '${doctor.specialty}')" ${availableSlots.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>Book Appointment</button>
+      `
+      
+      container.appendChild(card)
     })
-    
-    const slotsHTML = availableSlots.length > 0 
-      ? availableSlots.map(slot => `<span class="slot" onclick="selectSlot('${doc.id}', '${slot}')">${slot}</span>`).join('')
-      : '<span style="color: var(--gray); font-size: 14px;">No slots available</span>'
-    
-    card.innerHTML = `
-      <div class="doctor-header">
-        <div class="doctor-avatar">${doc.initials}</div>
-        <div class="doctor-info">
-          <h3>${doc.name}</h3>
-          <div class="doctor-specialty">${doc.specialty}</div>
-          <div class="doctor-rating">★ ${doc.rating}</div>
-        </div>
-      </div>
-      <div class="doctor-slots">
-        <span class="slot-label">Select a Time Slot</span>
-        <div class="slots" id="slots-${doc.id}">
-          ${slotsHTML}
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="bookDoctor('${doc.id}', '${doc.name}')" ${availableSlots.length === 0 ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>Book Appointment</button>
-    `
-    
-    container.appendChild(card)
-  })
+  } catch (error) {
+    console.error('Error loading doctors:', error)
+    container.innerHTML = '<div class="empty-state"><p>Error loading doctors. Please try again.</p></div>'
+  }
 }
 
 let selectedSlots = {}
@@ -685,7 +712,7 @@ function selectSlot(doctorId, slot) {
   selectedSlots[doctorId] = slot
 }
 
-async function bookDoctor(doctorId, doctorName) {
+async function bookDoctor(doctorId, doctorName, doctorSpecialty) {
   if (!currentUser) {
     showNotification('Please login to book an appointment', 'error')
     switchView('hero')
@@ -725,6 +752,7 @@ async function bookDoctor(doctorId, doctorName) {
     await db.collection('appointments').add({
       doctorId: doctorId,
       doctorName: doctorName,
+      doctorSpecialty: doctorSpecialty,
       patientId: currentUser.uid,
       patientName: currentUser.name,
       patientEmail: currentUser.email,
@@ -1477,11 +1505,9 @@ async function renderDoctorAppointments() {
   }
   
   try {
-    const doctorMatch = mockDoctors.find(d => d.specialty === currentDoctor.specialty)
-    const doctorId = doctorMatch ? doctorMatch.id : 'd1'
-    
+    // Get appointments for THIS doctor's ID (not specialty)
     const appointments = await db.collection('appointments')
-      .where('doctorId', '==', doctorId)
+      .where('doctorId', '==', currentDoctor.id)
       .get()
     
     if (appointments.empty) {
@@ -1570,7 +1596,7 @@ async function viewPatientHistory(patientEmail) {
 
 function createMeeting() {
   const meetingId = 'meet-' + Math.random().toString(36).substr(2, 9)
-  const meetingLink = `https://meet.smartcare.com/${meetingId}`
+  const meetingLink = `https://creativedragon1.github.io/SmartCare-/?meeting=${meetingId}`
   
   const meeting = {
     id: meetingId,
@@ -1590,7 +1616,7 @@ function createMeeting() {
 
 async function startMeetingForAppointment(appointmentId, patientName, patientEmail) {
   const meetingId = 'meet-' + Math.random().toString(36).substr(2, 9)
-  const meetingLink = `https://meet.smartcare.com/${meetingId}`
+  const meetingLink = `https://creativedragon1.github.io/SmartCare-/?meeting=${meetingId}`
   
   const meeting = {
     id: meetingId,
@@ -1615,12 +1641,13 @@ async function startMeetingForAppointment(appointmentId, patientName, patientEma
     activeMeetings.push(meeting)
     renderMeetings()
     
-    const confirmOpen = confirm(`Meeting created for ${patientName}!\n\nMeeting Link: ${meetingLink}\n\nClick OK to open in new tab.`)
+    const confirmOpen = confirm(`Meeting created for ${patientName}!\n\nMeeting Link: ${meetingLink}\n\nClick OK to copy link to clipboard.`)
     if (confirmOpen) {
-      window.open(meetingLink, '_blank')
+      navigator.clipboard.writeText(meetingLink)
+      showNotification('Meeting link copied to clipboard!', 'success')
     }
     
-    showNotification('Meeting started! Link sent to patient.', 'success')
+    showNotification('Meeting started! Share link with patient.', 'success')
   } catch (error) {
     showNotification('Error starting meeting: ' + error.message, 'error')
   }
